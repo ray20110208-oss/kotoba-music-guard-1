@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "*.zip"
+      - "*.zip.part-*"
 
 permissions:
   contents: read
@@ -22,7 +23,14 @@ jobs:
       - name: Extract latest source
         shell: bash
         run: |
-          ZIP_FILE="$(find . -maxdepth 1 -type f -name 'Kotoba-Music-Guard-source-*.zip' | sort -V | tail -n 1)"
+          PART_PREFIX="$(find . -maxdepth 1 -type f -name 'Kotoba-Music-Guard-source-*.zip.part-*' -printf '%f\n' | sed 's/\.part-[0-9][0-9]*$//' | sort -Vu | tail -n 1)"
+          if [ -n "$PART_PREFIX" ]; then
+            cat "${PART_PREFIX}".part-* > source.zip
+            echo 'df40c2a3b1f06c902168f996a10c900efb017c0bcc4bc8f35f4bdce69c1490d1  source.zip' | sha256sum -c -
+            ZIP_FILE=source.zip
+          else
+            ZIP_FILE="$(find . -maxdepth 1 -type f -name 'Kotoba-Music-Guard-source-*.zip' | sort -V | tail -n 1)"
+          fi
           test -n "$ZIP_FILE"
           mkdir project
           unzip -q "$ZIP_FILE" -d project
@@ -53,6 +61,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Kotoba-Music-Guard-latest
+          name: Kotoba-Music-Guard-v0.2.5-alpha5
           path: project/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
