@@ -70,5 +70,5 @@
 - JDK 17 + Android SDK 35：`assembleDebug lintDebug` 成功。產物 metadata 為 `0.3.0-alpha1-realtime` / code 14。
 - lint 最終 0 errors、21 warnings（多為既有 locale、UI 字串與 manifest 提示）；日誌另有既有 Kotlin stdlib 2.2.0 與 lint 內嵌分析器 metadata 版本不相容訊息，故不宣稱靜態分析完全無警告。
 - 後端 9 項 mock WebSocket 測試通過；包含預設 3 秒期限、長連線輪替及未提交音訊上限。
-- JVM 音訊 adapter 測試通過；JavaScript 語法檢查、Python 準備腳本語法檢查、diff 空白檢查通過。
+- JVM 音訊 adapter 與字幕狀態測試通過（當前字幕更新、完成後不可改寫、靜音後舊字幕過期、過期 ID／音訊與靜音）；JavaScript 語法檢查、Python 準備腳本語法檢查、diff 空白檢查通過。
 - 沒有 API key、沒有部署後端、沒有真機／真實音訊翻譯測試；未驗證模型帳號權限、日文長句品質、費用及 4–6 秒目標。

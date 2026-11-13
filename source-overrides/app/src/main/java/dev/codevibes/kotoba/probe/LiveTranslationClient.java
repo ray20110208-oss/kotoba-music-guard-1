@@ -20,15 +20,15 @@ final class LiveTranslationClient {
     private WebSocket socket;
     private boolean stopped, ready;
     private int generation, retries;
-    private long audioBytes, captionId = -1;
-    private String completed = "";
+    private long audioBytes;
+    private SubtitleBuffer subtitles = new SubtitleBuffer();
     private LiveAudioAdapter adapter;
     LiveTranslationClient(String endpoint, String token) { this.endpoint = endpoint; this.token = token; }
     synchronized void start() { connect(); }
     private synchronized void connect() {
         if (stopped) return;
         final int epoch = ++generation;
-        ready = false; audioBytes = 0; captionId = -1; completed = ""; caption = "";
+        ready = false; audioBytes = 0; subtitles = new SubtitleBuffer(); caption = "";
         status = "連線中（尚未上傳音訊）";
         Request request = new Request.Builder().url(endpoint).header("Authorization", "Bearer " + token).build();
         socket = http.newWebSocket(request, new WebSocketListener() {
@@ -43,25 +43,19 @@ final class LiveTranslationClient {
                             status = "翻譯中：未篩選音訊正在上傳";
                         } else if (type.equals("caption")) {
                             long id = e.getLong("id"), end = e.getLong("audioEndMs");
-                            if (id < captionId || audioBytes / 48 - end > 6000 || end > audioBytes / 48 + 200) return;
-                            captionId = id;
                             String current = e.optString("text");
                             if (current.length() > 2048) { retry(epoch, "字幕超出上限", false); return; }
-                            if (!current.isEmpty()) {
-                                caption = (completed.isEmpty() ? "" : completed + "\n") + current;
-                                captionAt = SystemClock.elapsedRealtime();
-                            }
-                            if (e.optBoolean("final") && !current.isEmpty()) {
-                                // Only the current caption grows; retain one fixed previous caption.
-                                completed = current;
-                            }
+                            long now = SystemClock.elapsedRealtime();
+                            String display = subtitles.accept(id, end, audioBytes / 48,
+                                    current, e.optBoolean("final"), now);
+                            if (display != null) { caption = display; captionAt = now; }
                         } else if (type.equals("status")) status = "連線狀態：" + e.optString("state");
                     } catch (Exception ignored) { retry(epoch, "字幕通訊格式錯誤", false); }
                 }
             }
             @Override public void onClosed(WebSocket ws, int code, String reason) {
                 synchronized (LiveTranslationClient.this) {
-                    if ("rotate_session".equals(reason)) retries = 0;
+                    if (epoch == generation && "rotate_session".equals(reason)) retries = 0;
                     retry(epoch, "連線中斷，音訊缺口不補送", true);
                 }
             }
@@ -86,7 +80,7 @@ final class LiveTranslationClient {
     }
     private synchronized void retry(int epoch, String message, boolean recoverable) {
         if (stopped || epoch != generation) return;
-        ++generation; ready = false; caption = ""; completed = "";
+        ++generation; ready = false; caption = ""; subtitles = new SubtitleBuffer();
         if (socket != null) socket.cancel();
         handler.removeCallbacksAndMessages(null);
         if (!recoverable || retries >= 5) {

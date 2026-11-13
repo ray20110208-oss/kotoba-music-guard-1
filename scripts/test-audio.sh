@@ -2,5 +2,6 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p work/audio-tests
-javac -d work/audio-tests source-overrides/app/src/main/java/dev/codevibes/kotoba/probe/LiveAudioAdapter.java tests/LiveAudioAdapterTest.java
+javac -d work/audio-tests source-overrides/app/src/main/java/dev/codevibes/kotoba/probe/LiveAudioAdapter.java tests/LiveAudioAdapterTest.java source-overrides/app/src/main/java/dev/codevibes/kotoba/probe/SubtitleBuffer.java tests/SubtitleBufferTest.java
 java -cp work/audio-tests dev.codevibes.kotoba.probe.LiveAudioAdapterTest
+java -cp work/audio-tests dev.codevibes.kotoba.probe.SubtitleBufferTest
