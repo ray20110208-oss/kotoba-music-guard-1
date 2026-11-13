@@ -1,0 +1,11 @@
+work/
+project/
+node_modules/
+.env
+.env.*
+!.env.example
+local.properties
+*.log
+
+__pycache__/
+*.pyc

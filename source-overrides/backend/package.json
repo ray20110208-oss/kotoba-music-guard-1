@@ -1,0 +1,18 @@
+{
+  "name": "kotoba-realtime-relay",
+  "version": "0.3.0-alpha1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test",
+    "check": "node --check src/server.mjs && node --check src/relay.mjs"
+  },
+  "dependencies": {
+    "https-proxy-agent": "9.1.0",
+    "ws": "8.23.0"
+  }
+}
