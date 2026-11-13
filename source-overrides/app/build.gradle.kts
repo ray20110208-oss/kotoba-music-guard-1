@@ -7,8 +7,8 @@ android {
         applicationId = "dev.codevibes.kotoba.probe"
         minSdk = 29
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.2.5-alpha5-battery1"
+        versionCode = 14
+        versionName = "0.3.0-alpha1-realtime"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
@@ -18,6 +18,7 @@ android {
 }
 
 dependencies {
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(files("libs/android-vad-webrtc-2.0.10.aar"))
     implementation(fileTree("libs/yamnet-runtime") { include("*.aar", "*.jar") })
     implementation("org.jetbrains.kotlin:kotlin-stdlib:2.2.0")

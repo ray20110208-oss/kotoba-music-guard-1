@@ -19,6 +19,9 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
+import android.widget.Switch;
+import android.text.InputType;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -33,10 +36,13 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_AUDIO = 10, REQUEST_CAPTURE = 11, REQUEST_EXPORT = 12;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView state, vad, metrics, music, yamnet, council, counts, presetLabel, markStatus, playbackStatus;
-    private LinearLayout segmentHistory;
+    private LinearLayout segmentHistory, diagnostics;
     private ProgressBar meter;
     private Button start;
     private MediaPlayer player;
+    private EditText relayUrl, relayToken;
+    private Switch liveMode;
+    private TextView subtitles, liveStatus;
     private int renderedSegmentCount = -1;
     private TextView batteryStatus;
     private double batteryCelsius = Double.NaN;
@@ -60,6 +66,15 @@ public final class MainActivity extends Activity {
             SharedPreferences p = getSharedPreferences("probe", MODE_PRIVATE);
             boolean running = p.getBoolean("running", false);
             double db = bits(p, "db", -120), noise = bits(p, "noise", -60), gate = bits(p, "gate", -54);
+            liveStatus.setText(LiveTranslationClient.status);
+            diagnostics.setVisibility(liveMode.isChecked() ? View.GONE : View.VISIBLE);
+            relayUrl.setVisibility(liveMode.isChecked() ? View.VISIBLE : View.GONE);
+            relayToken.setVisibility(liveMode.isChecked() ? View.VISIBLE : View.GONE);
+            subtitles.setVisibility(liveMode.isChecked() ? View.VISIBLE : View.GONE);
+            liveStatus.setVisibility(liveMode.isChecked() ? View.VISIBLE : View.GONE);
+            subtitles.setText(SystemClock.elapsedRealtime() - LiveTranslationClient.captionAt < 6000
+                    ? LiveTranslationClient.caption : "等待中文字幕");
+            relayUrl.setEnabled(!running); relayToken.setEnabled(!running); liveMode.setEnabled(!running);
             state.setText(p.getString("state", "尚未開始"));
             vad.setText((p.getBoolean("speech", false) ? "● " : "○ ") + p.getString("vad_state", "等待音訊"));
             vad.setTextColor(p.getBoolean("speech", false) ? Color.rgb(25, 135, 84) : Color.rgb(90, 96, 112));
@@ -103,7 +118,7 @@ public final class MainActivity extends Activity {
             renderSegmentHistory(p);
             int preset = p.getInt("preset", 1);
             presetLabel.setText("Preset：" + presetName(preset));
-            start.setText(running ? "停止 VAD 測試" : "開始 VAD 測試");
+            start.setText(running ? "停止擷取" : liveMode.isChecked() ? "開始即時翻譯" : "開始離線診斷");
             handler.postDelayed(this, 250);
         }
     };
@@ -122,45 +137,61 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(22), dp(44), dp(22), dp(28)); root.setBackgroundColor(Color.rgb(245, 246, 250));
-        TextView title = tv("Kotoba Music Guard", 27, Color.rgb(20, 24, 35)); title.setTypeface(null, 1); root.addView(title);
-        root.addView(tv("v0.2.5-alpha5-battery1｜自然句尾切片；投票式證據融合。沒有網路權限。", 15, Color.rgb(78, 85, 102)), margin(0, 10, 0, 22));
+        TextView title = tv("Kotoba Music Guard", 27, Color.rgb(20, 24, 35)); title.setTypeface(null, android.graphics.Typeface.BOLD); root.addView(title);
+        root.addView(tv("v0.3.0-alpha1｜即時繁中字幕實驗版；延遲與品質待實測。", 15, Color.rgb(78, 85, 102)), margin(0, 10, 0, 22));
+        liveMode = new Switch(this); liveMode.setText("即時翻譯（上傳音訊；關閉則離線診斷最多 5 分鐘）");
+        liveMode.setChecked(getSharedPreferences("probe", MODE_PRIVATE).getBoolean("live_mode", true)); root.addView(liveMode);
+        relayUrl = new EditText(this); relayUrl.setSingleLine(true);
+        relayUrl.setHint("wss://你的後端/v1/live");
+        relayUrl.setText(getSharedPreferences("probe", MODE_PRIVATE).getString("relay_url", ""));
+        root.addView(relayUrl);
+        relayToken = new EditText(this); relayToken.setSingleLine(true);
+        relayToken.setHint("後端存取碼（不是 OpenAI API 金鑰）");
+        relayToken.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        relayToken.setSaveEnabled(false); root.addView(relayToken);
+        liveStatus = tv("尚未連線", 14, Color.DKGRAY); root.addView(liveStatus);
+        subtitles = tv("等待中文字幕", 24, Color.BLACK);
+        subtitles.setPadding(dp(12), dp(12), dp(12), dp(12));
+        subtitles.setBackgroundColor(Color.WHITE); root.addView(subtitles, margin(0, 8, 0, 16));
         state = tv("尚未開始", 21, Color.rgb(20, 24, 35)); root.addView(state, margin(0, 0, 0, 8));
-        vad = tv("○ 等待音訊", 18, Color.rgb(90, 96, 112)); root.addView(vad, margin(0, 0, 0, 12));
-        meter = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal); meter.setMax(100); root.addView(meter, lp(-1, dp(16)));
-        metrics = tv("音量 —", 15, Color.rgb(80, 86, 102)); root.addView(metrics, margin(0, 12, 0, 18));
+        start = new Button(this); start.setText("開始即時翻譯"); start.setAllCaps(false); root.addView(start, margin(0, 14, 0, 0));
         batteryStatus = tv("電池溫度 —｜等待系統回報", 14, Color.rgb(80, 86, 102));
         root.addView(batteryStatus, margin(0, 0, 0, 18));
+        diagnostics = new LinearLayout(this); diagnostics.setOrientation(LinearLayout.VERTICAL);
+        root.addView(diagnostics);
+        vad = tv("○ 等待音訊", 18, Color.rgb(90, 96, 112)); diagnostics.addView(vad, margin(0, 0, 0, 12));
+        meter = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal); meter.setMax(100); diagnostics.addView(meter, lp(-1, dp(16)));
+        metrics = tv("音量 —", 15, Color.rgb(80, 86, 102)); diagnostics.addView(metrics, margin(0, 12, 0, 18));
         music = tv("Music Guard 尚未取得資料", 14, Color.rgb(80, 86, 102));
         music.setPadding(dp(12), dp(12), dp(12), dp(12)); music.setBackgroundColor(Color.WHITE);
-        root.addView(music, margin(0, 0, 0, 18));
+        diagnostics.addView(music, margin(0, 0, 0, 18));
         yamnet = tv("YAMNet Shadow 尚未初始化", 14, Color.rgb(80, 86, 102));
         yamnet.setPadding(dp(12), dp(12), dp(12), dp(12)); yamnet.setBackgroundColor(Color.WHITE);
-        root.addView(yamnet, margin(0, 0, 0, 18));
+        diagnostics.addView(yamnet, margin(0, 0, 0, 18));
         council = tv("Evidence Council 尚未取得資料", 14, Color.rgb(80, 86, 102));
         council.setPadding(dp(12), dp(12), dp(12), dp(12)); council.setBackgroundColor(Color.WHITE);
-        root.addView(council, margin(0, 0, 0, 18));
-        presetLabel = tv("Preset：Chat / Mode 1", 17, Color.rgb(45, 75, 210)); presetLabel.setPadding(dp(12), dp(14), dp(12), dp(14)); presetLabel.setBackgroundColor(Color.WHITE); root.addView(presetLabel, margin(0, 0, 0, 18));
-        TextView segmentTitle = tv("完成片段（點選回聽）", 16, Color.rgb(20, 24, 35)); segmentTitle.setTypeface(null, 1); root.addView(segmentTitle);
-        counts = tv("保留 0｜丟棄 0", 14, Color.rgb(100, 106, 122)); root.addView(counts, margin(0, 0, 0, 14));
+        diagnostics.addView(council, margin(0, 0, 0, 18));
+        presetLabel = tv("Preset：Chat / Mode 1", 17, Color.rgb(45, 75, 210)); presetLabel.setPadding(dp(12), dp(14), dp(12), dp(14)); presetLabel.setBackgroundColor(Color.WHITE); diagnostics.addView(presetLabel, margin(0, 0, 0, 18));
+        TextView segmentTitle = tv("完成片段（點選回聽）", 16, Color.rgb(20, 24, 35)); segmentTitle.setTypeface(null, android.graphics.Typeface.BOLD); diagnostics.addView(segmentTitle);
+        counts = tv("保留 0｜丟棄 0", 14, Color.rgb(100, 106, 122)); diagnostics.addView(counts, margin(0, 0, 0, 14));
         segmentHistory = new LinearLayout(this); segmentHistory.setOrientation(LinearLayout.VERTICAL);
-        root.addView(segmentHistory, lp(-1, -2));
+        diagnostics.addView(segmentHistory, lp(-1, -2));
         playbackStatus = tv("還沒有完成的片段", 13, Color.rgb(100, 106, 122));
-        root.addView(playbackStatus, margin(0, 6, 0, 0));
-        start = new Button(this); start.setText("開始 VAD 測試"); start.setAllCaps(false); root.addView(start, margin(0, 14, 0, 0));
-        root.addView(tv("推薦測試：同一段素材依序測純 BGM、說話＋遊戲、BGM＋說話；注意 Decision 與實際時間軸是否一致。", 13, Color.rgb(105, 111, 128)), margin(0, 18, 0, 12));
+        diagnostics.addView(playbackStatus, margin(0, 6, 0, 0));
+        diagnostics.addView(tv("推薦測試：同一段素材依序測純 BGM、說話＋遊戲、BGM＋說話；注意 Decision 與實際時間軸是否一致。", 13, Color.rgb(105, 111, 128)), margin(0, 18, 0, 12));
         TextView labelTitle = tv("人工標記（寫入診斷 CSV）", 15, Color.rgb(20, 24, 35));
-        labelTitle.setTypeface(null, 1); root.addView(labelTitle, margin(0, 22, 0, 6));
-        root.addView(markButton("純音樂", "music"));
-        root.addView(markButton("說話", "speech"));
-        root.addView(markButton("BGM＋說話", "speech_with_bgm"));
-        root.addView(markButton("遊戲音效／誤判", "game_or_false_positive"));
-        root.addView(markButton("漏判／吃句首", "miss_or_clipped_start"));
-        markStatus = tv("尚未標記", 13, Color.rgb(100, 106, 122)); root.addView(markStatus, margin(0, 8, 0, 10));
+        labelTitle.setTypeface(null, android.graphics.Typeface.BOLD); diagnostics.addView(labelTitle, margin(0, 22, 0, 6));
+        diagnostics.addView(markButton("純音樂", "music"));
+        diagnostics.addView(markButton("說話", "speech"));
+        diagnostics.addView(markButton("BGM＋說話", "speech_with_bgm"));
+        diagnostics.addView(markButton("遊戲音效／誤判", "game_or_false_positive"));
+        diagnostics.addView(markButton("漏判／吃句首", "miss_or_clipped_start"));
+        markStatus = tv("尚未標記", 13, Color.rgb(100, 106, 122)); diagnostics.addView(markStatus, margin(0, 8, 0, 10));
         Button export = new Button(this); export.setText("匯出診斷 CSV"); export.setAllCaps(false);
         export.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) { exportCsv(); }
         });
-        root.addView(export, lp(-1, dp(50)));
+        diagnostics.addView(export, lp(-1, dp(50)));
         root.setOnApplyWindowInsetsListener((view, insets) -> {
             int bottom = insets.getSystemWindowInsetBottom();
             view.setPadding(dp(22), dp(44), dp(22), dp(28) + bottom);
@@ -172,6 +203,17 @@ public final class MainActivity extends Activity {
     private void toggle() {
         boolean running = getSharedPreferences("probe", MODE_PRIVATE).getBoolean("running", false);
         if (running) { startService(new Intent(this, CaptureService.class).setAction(CaptureService.ACTION_STOP)); return; }
+        if (liveMode.isChecked()) {
+            String endpoint = relayUrl.getText().toString().trim();
+            Uri uri = Uri.parse(endpoint);
+            if (!"wss".equals(uri.getScheme()) || uri.getHost() == null || !"/v1/live".equals(uri.getPath())
+                    || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null
+                    || relayToken.getText().length() < 32) {
+                LiveTranslationClient.status = "請輸入 wss://後端/v1/live 與至少 32 字元的後端存取碼"; return;
+            }
+            getSharedPreferences("probe", MODE_PRIVATE).edit().putString("relay_url", endpoint).apply();
+        }
+        getSharedPreferences("probe", MODE_PRIVATE).edit().putBoolean("live_mode", liveMode.isChecked()).apply();
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQUEST_AUDIO); return;
         }
@@ -262,6 +304,9 @@ public final class MainActivity extends Activity {
         if (code == REQUEST_CAPTURE && resultCode == RESULT_OK && data != null) {
             Intent service = new Intent(this, CaptureService.class).setAction(CaptureService.ACTION_START)
                     .putExtra(CaptureService.EXTRA_RESULT_CODE, resultCode).putExtra(CaptureService.EXTRA_RESULT_DATA, data);
+            service.putExtra("live_mode", liveMode.isChecked());
+            service.putExtra("relay_url", relayUrl.getText().toString().trim());
+            service.putExtra("relay_token", relayToken.getText().toString());
             startForegroundService(service);
         }
         if (code == REQUEST_EXPORT && resultCode == RESULT_OK && data != null && data.getData() != null)
